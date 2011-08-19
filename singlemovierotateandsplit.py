@@ -37,12 +37,13 @@ d[u'QTAddImageCodecQuality'] = QTKit.codecHighQuality #or something? check where
 #  This solves the memory leak when writing to the movies, but the movies are still completely black video for the entire movie (which is also
 #  twice as long as it should be). The duration issue is because we're getting the time base wrong? The blackness issue... need to test the output images separately.
 
-m_left = QTKit.QTMovie.alloc().initToWritableFile_error_(u'Left' + filename, e)[0]
-m_right = QTKit.QTMovie.alloc().initToWritableFile_error_(u'Right' + filename, e)[0]
+m_left = QTKit.QTMovie.alloc().initToWritableFile_error_(filename + u'_left', e)[0]
+m_right = QTKit.QTMovie.alloc().initToWritableFile_error_(filename + u'_right', e)[0]
 #print m_left
 #sys.exit(0)
 m_left.setAttribute_forKey_(True, QTKit.QTMovieEditableAttribute)
 m_right.setAttribute_forKey_(True, QTKit.QTMovieEditableAttribute)
+
 #We might want to set the output movies to the same format as the input movie
 #we *do* want to control the video stream compression (but this is done in addImage?)
 
@@ -54,13 +55,16 @@ t_range = QTKit.QTMakeTimeRange(start,dura)
 print QTKit.QTTimeIncrement(start, dura)
 
 #and add the soundtrack to both of them
-m_in_strack = m_in.tracksOfMediaType_(QTKit.QTMediaTypeSound)[0]
-m_left.insertSegmentOfTrack_timeRange_atTime_(m_in_strack, t_range, start)
-m_right.insertSegmentOfTrack_timeRange_atTime_(m_in_strack, t_range, start)
+#m_in_strack = m_in.tracksOfMediaType_(QTKit.QTMediaTypeSound)[0]
+#m_left.insertSegmentOfTrack_timeRange_atTime_(m_in_strack, t_range, start)
+#m_right.insertSegmentOfTrack_timeRange_atTime_(m_in_strack, t_range, start)
 
 #
 # And now to add the video frames.
 m_in_vtrack = m_in.tracksOfMediaType_(QTKit.QTMediaTypeVideo)[0]
+timescale = m_in_vtrack.trackAttributes()[u'QTTrackTimeScaleAttribute']
+d[u'QTTrackTimeScaleAttribute'] = timescale
+
 # can get sample durations from GetMovieNextInterestingTime to pull frames + their durations (as video samples)
 
 #frame handling stuff 
@@ -68,6 +72,9 @@ m_in_vtrack = m_in.tracksOfMediaType_(QTKit.QTMediaTypeVideo)[0]
 #so, we just get NSImages and manipulate
 
 #while we can stepForward:
+#position ourselves back at the start of the movies...
+m_left.setCurrentTime_(start)
+m_right.setCurrentTime_(start)
 
 curtime = QTKit.QTMakeTime(99999,99) #fake number so doesn't match first while
 newtime = m_in.currentTime()
@@ -103,15 +110,19 @@ while (QTKit.QTTimeCompare(curtime,newtime) != Foundation.NSOrderedSame ):
 	#	bImageLeftTrans = NSImage.alloc().imageFromCIImage_(cImageLeftTrans)
 	#	bImageRightTrans = NSImage.alloc().imageFromCIImage_(cImageRightTrans)
 	#sommat like: (fix names, and convert from Objective-C)
-	repImageLeftTrans = NSCIImageRep.imageRepWithCIImage_(cImageLeftTrans)
+	#repImageLeftTrans = NSCIImageRep.imageRepWithCIImage_(cImageLeftTrans)
+	repImageLeftTrans = NSBitmapImageRep.alloc().initWithCIImage_(cImageLeftTrans)
 	bImageLeftTrans = NSImage.alloc().initWithSize_(repImageLeftTrans.size())
 	bImageLeftTrans.addRepresentation_(repImageLeftTrans)
-	repImageRightTrans = NSCIImageRep.imageRepWithCIImage_(cImageRightTrans)
+	#repImageRightTrans = NSCIImageRep.imageRepWithCIImage_(cImageRightTrans)
+	repImageRightTrans = NSBitmapImageRep.alloc().initWithCIImage_(cImageRightTrans)
 	bImageRightTrans = NSImage.alloc().initWithSize_(repImageRightTrans.size())
 	bImageRightTrans.addRepresentation_(repImageRightTrans)
 	
-	print bImageRightTrans
-	sys.exit(1)
+	#bImageRightTrans_a = NSBitmapImageRep.alloc().initWithCIImage_(cImageRightTrans)
+	#tmp_data = bImageRightTrans_a.representationUsingType_properties_(NSBMPFileType,objc.NULL)
+	#tmp_data.writeToFile_atomically_("./c_i_right_data.bmp",False)
+	#sys.exit(1)
 	
 	
 	m_in.stepForward() #or whatever
@@ -124,19 +135,26 @@ while (QTKit.QTTimeCompare(curtime,newtime) != Foundation.NSOrderedSame ):
 	#so, write out our new frames:
 	m_left.addImage_forDuration_withAttributes_(bImageLeftTrans,frameDur,d)
 	m_right.addImage_forDuration_withAttributes_(bImageRightTrans,frameDur,d)
-	m_left.setCurrentTime_(m_left.duration() )
-	m_right.setCurrentTime_(m_right.duration() )
+	m_left.setCurrentTime_(newtime )
+	m_right.setCurrentTime_(newtime )
 	
 	m_left.updateMovieFile()
 	m_right.updateMovieFile()
 	
 	del pool
 #	cFrame.release()
+
+#soundtrack add!
+m_in_strack = m_in.tracksOfMediaType_(QTKit.QTMediaTypeSound)[0]
+m_left.insertSegmentOfTrack_timeRange_atTime_(m_in_strack, t_range, start)
+m_right.insertSegmentOfTrack_timeRange_atTime_(m_in_strack, t_range, start)
+
+
 	
 #then write out to files - this actually generates smaller files than the original movie files used in the loop, presumably because we get interframe compression here.
 d_out = Foundation.NSMutableDictionary.dictionary()
 d_out['QTMovieFlatten'] = True
 
-m_left.writeToFile_withAttributes_(u'Left_' + filename, d_out)
-m_right.writeToFile_withAttributes_(u'Right_' + filename, d_out)
+m_left.writeToFile_withAttributes_(filename + u'left.mov', d_out)
+m_right.writeToFile_withAttributes_(filename + u'right.mov', d_out)
 
